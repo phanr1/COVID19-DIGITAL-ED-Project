@@ -1,0 +1,65 @@
+---
+title: "Cleaning to Pare Down File"
+author: "Katrina Gutierrez"
+date: "10/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Cleaning Data
+
+Goal: Clean data everything_merged.csv to produce a smaller file with:
+- dates for the weeks
+- limited predictor and outcome variables that are available weeks 1-33
+    - exception: SCHLHRS - weeks 13-33
+
+
+The completed file has numbers for the responses (For example, 1-4 instead of the "blah")
+
+
+
+```{r }
+library("readr")
+library("data.table")
+library("tidyverse")
+
+```
+
+Loading the data
+
+```{r }
+
+# need to do fread instead of read.csv for the large file 
+df <- fread("everything_merged.csv")
+dates <- fread("dates.csv")
+
+
+```
+
+Cleaning steps:
+- Select variables that are present weeks 1-33 (+ SCHLHRS which is weeks 13-33)
+- Add date variable
+- Exporting csv
+
+
+```{r }
+
+predictors <- c("EEDUC","RHISPANIC", "RRACE", "THHLD_NUMKID", "THHLD_NUMPER", "INCOME", "CURFOODSUF", "TSPNDFOOD", "TSPNDPRPD", "MORTCONF", "EST_ST")
+outcomes <- c("TEACH1", "TEACH2", "TEACH3", "TEACH4", "TEACH5", "COMPAVAIL", "INTRNTAVAIL", "SCHLHRS")
+
+
+clean <- df %>% 
+  dplyr::select(WEEK, PWEIGHT, predictors, outcomes) %>%
+  filter(WEEK <= 33)
+
+rm(df)
+
+clean <- merge(dates, clean, by = "WEEK")  
+
+write.csv(clean,"clean_data.csv", row.names = FALSE)
+```
+
+

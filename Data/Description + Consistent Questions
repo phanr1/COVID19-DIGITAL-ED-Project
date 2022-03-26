@@ -1,0 +1,52 @@
+# This folder contains all the raw data downloaded for weeks 1-37 
+Downloaded from: https://www.census.gov/programs-surveys/household-pulse-survey/datasets.html
+
+There are two subfolders:
+* data_dictionaries: data dictionaries for each week (questions may change over time)
+* responses: the actual responses to all the questions for each week 
+
+# List of variables that are present from Week1-33 (April 23, 2020 - July 5, 2021)
+
+*TEACH1-5 (check all that apply)
+Pandemic impact on education - In-person instruction at school
+Pandemic impact on education - Virtual/online instruction from a teacher in real time
+Pandemic impact on education - Learned on own with material provided by school
+Pandemic impact on education - Learned  on their own using paper materials provided by their school
+Pandemic impact on education - Learned on their own using materials that were NOT provided by their school
+
+*COMPAVAIL (select one)
+Computer availability for educational purposes
+1) Always available
+2) Usually available
+3) Sometimes available
+4) Rarely available
+5) Never available 
+-99) Question seen but category not selected
+-88) Missing / Did not report
+
+*INTRNTAVAIL (select one)
+Internet availability for educational purposes
+1) Always available
+2) Usually available
+3) Sometimes available
+4) Rarely available
+5) Never available 
+-99) Question seen but category not selected
+-88) Missing / Did not report
+
+*INTRNT1-3 (select all that apply)
+Internet services- Paid for by the children’s school or school district
+Internet services- Paid for by someone in the household or family
+Internet services-Paid for by another source
+
+# Variable present only from Week 13-33 (August 19, 2020 - July 5, 2021: '20-'21 Schoolyear)
+
+*SCHLHRS (select one)
+Children's live virtual contact with teachers in last 7 days
+"1) None 
+2) 1 day 
+3) 2-3 days
+4) 4 or more days
+-99) Question seen but category not selected
+-88) Missing / Did not report"
+

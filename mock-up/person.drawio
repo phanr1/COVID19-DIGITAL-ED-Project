@@ -1,0 +1,13 @@
+<mxfile host="65bd71144e">
+    <diagram id="_hloLqivhugqcHRtUsSw" name="Page-1">
+        <mxGraphModel dx="218" dy="508" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="4" value="" style="shape=mxgraph.signs.people.woman_1;html=1;pointerEvents=1;strokeColor=#006EAF;verticalLabelPosition=bottom;verticalAlign=top;align=center;sketch=0;aspect=fixed;fontColor=#ffffff;fillColor=#99CCFF;" parent="1" vertex="1">
+                    <mxGeometry x="10" y="10" width="144" height="300" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

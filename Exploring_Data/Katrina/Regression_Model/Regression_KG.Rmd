@@ -1,0 +1,390 @@
+---
+title: "Regression_KG"
+author: "Katrina Gutierrez"
+date: "10/31/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Goals: 
+
+1) deal with missing data:
+    - see if any predictors need to be removed because too much is missing
+    - impute missing values via MICE package (regression for each one)
+2) build an ordinal regression model to:
+    - see what factors are significant in predicting SCHLHRS (amount of virtual instruction)
+    - get predicted probabilities for each predictor/factor or combinations of factors
+    
+    
+Note: SCHLHRS is only for weeks 13-33
+    
+```{r echo=FALSE}
+library(readr)
+library(data.table)
+library(tidyverse)
+library(DataExplorer)
+library(mice)
+
+require(foreign)
+require(ggplot2)
+require(MASS)
+require(Hmisc)
+require(reshape2)
+
+
+
+```
+
+Loading data and preliminary cleaning
+
+```{r echo=FALSE}
+
+df <- fread("../../../Merging_and_Cleaning_Files/clean_data.csv") %>%
+  filter(SCHLHRS > 0) # focusing on data only where we have responses for SCHLHRS (outcome of interest)
+
+df[df < 0] <- NA  # turns all negative values (skipped questions) into NA
+
+# changing factor variables (represented as int) to factors
+# for some reason I was having trouble automating this, so I did a lot by hand 
+
+df <- df %>%
+  mutate(WEEK = as.factor(as.character(WEEK)) ) %>%
+  mutate(EEDUC = as.factor(as.character(EEDUC)) ) %>%
+  mutate(RHISPANIC = as.factor(as.character(RHISPANIC)) ) %>%
+  mutate(THHLD_NUMKID = as.factor(as.character(THHLD_NUMKID) )) %>%
+  mutate(THHLD_NUMPER = as.factor(as.character(THHLD_NUMPER) )) %>%
+  mutate(INCOME = as.factor(as.character(INCOME) )) %>%
+  mutate(CURFOODSUF = as.factor(as.character(CURFOODSUF)) ) %>%
+  mutate(MORTCONF = as.factor(as.character(MORTCONF) ) )%>%
+  mutate(EST_ST = as.factor(as.character(EST_ST) )) %>%
+  mutate(TEACH1 = as.factor(as.character(TEACH1) )) %>%
+  mutate(TEACH2 = as.factor(as.character(TEACH2) )) %>%
+  mutate(TEACH3 = as.factor(as.character(TEACH3) )) %>%
+  mutate(TEACH4 = as.factor(as.character(TEACH4) )) %>%
+  mutate(TEACH5 = as.factor(as.character(TEACH5) )) %>%
+  mutate(COMPAVAIL = as.factor(as.character(COMPAVAIL)) ) %>%
+  mutate(INTRNTAVAIL = as.factor(as.character(INTRNTAVAIL)) ) %>%
+  mutate(SCHLHRS = as.factor(as.character(SCHLHRS) )) %>%
+   mutate(RRACE = as.factor(as.character(RRACE) ))
+  
+
+str(df)
+
+```
+
+Let's now make a variable for both race and ethnicity combined.
+This is tough because there's overlap between Hispanic and all the races, so it's not a clear cut "bucket."
+
+First let's see how many respondents of each race identified as Hispanic and what percentage of the total that is.
+
+For reference 1 = White, 2 = Black, 3 = Asian, 4 = Other.
+
+
+```{r echo=FALSE}
+
+
+df %>% 
+  mutate(HISP = ifelse(RHISPANIC == 2, 1, 0)) %>%
+  mutate(ones = 1) %>%
+  group_by(RRACE) %>%
+  
+  summarise(
+      hisp = sum(HISP),
+      total = sum(ones)
+    
+  ) %>%
+  mutate(percent_total = hisp/total)
+
+
+
+
+```
+
+In the table above, looks like people who identified as Hispanic mostly put White as their race
+
+This is a very rough way to approach it, but I'm just going to put anyone who identified as Hispanic in the Hispanic category of the new variable.
+For the new variable, that means for White, Black, Asian, or Other (RRACE codes 1-4 respectively) these would all be people who did not identify as Hispanic.
+
+```{r echo=FALSE}
+
+# Making RACE_ETHNICITY variable with all RRACE and RHISPANIC info combined
+# "Hispanic" in this variable refers to anyone who identfied as Hispanic
+# All other categories are non-Hispanic
+df <- df %>% 
+  mutate(RACE_ETHNICITY = ifelse(RHISPANIC ==2, "Hispanic", 
+                                 ifelse(RRACE == 1, "White",
+                                        ifelse(RRACE == 2, "Black",
+                                               ifelse(RRACE == 3, "Asian",
+                                                      ifelse(RRACE == 4, "Other", NA))))))
+
+
+```
+
+## Step 1: Exploring missing values.  
+
+The following had more than 5% of the data missing:
+- TEACH 1-5
+- MORTCONF
+
+I removed these variables in the next code cell. 
+
+```{r echo=FALSE}
+
+plot_missing(df)
+
+```
+
+Removes variables mentioned above that are missing more than 5% of the data.
+
+Then, imputes missing values using MICE.  When I impute the values, I assume that missing data was "missing at random"
+
+
+Notes for mice: 
+
+- You have to specify a method for imputing each variable. "" skips the variable (no missing values)
+- see mice "method" selection info here: https://www.rdocumentation.org/packages/mice/versions/3.13.0/topics/mice
+- essentially used "polr" for ordinal variables and "norm.predict" (linear regression) for continuous variables
+- m=1, maxit = 1 does one iteration of imputation to save time -- this whole process takes a while because we still have a lot of data
+- used quickpred to limit number of predictors used for imputation for each variable:
+https://www.rdocumentation.org/packages/mice/versions/3.13.0/topics/quickpred
+- only use variables with correlation of at least .4
+
+```{r echo=FALSE}
+
+# removing variables missing more than 5% 
+df <- subset(df, select=-c(MORTCONF,TEACH1, TEACH2, TEACH3, TEACH4, TEACH5))  
+
+
+#imputing values using MICE
+mice_imputes <- mice(df, pred = quickpred(df, mincor= 0.4, exc = "SCHLHRS"), method = c("", "", "", "", "", "", "", "","polr", "polr", "norm.predict", "norm.predict", "", "polr",  "polr", "",""), maxit = 1, m = 1) 
+
+df_imputed <- complete(mice_imputes)
+
+# checking - anything missing left?
+plot_missing(df_imputed)
+
+#saving off imputed values
+write.csv(df_imputed,"imputed_data.csv", row.names = FALSE)
+
+
+
+```
+
+
+
+
+
+
+## Step 2: running regressions
+
+
+Decided not to deal with survey weights for now because I was having trouble figuring out how to work best with them or even determining what kind of weights they are.
+
+
+
+
+
+
+
+
+Starting off with running an ordinal regression with RACE_ETHNICITY to predict SCHLHRS
+
+I compare the predicted probabilities with the percent total in the population very roughly after ~ they roughly match
+
+
+```{r echo=FALSE}
+#making ordinal regression model with just RACE_ETHNICITY as predictor
+m <- polr(SCHLHRS ~ RACE_ETHNICITY, data = df_imputed, Hess = TRUE)
+ctable <- coef(summary(m))
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+ctable <- cbind(ctable, "p value" = p)
+
+ctable
+
+# getting predicted probabilities and comparing them to the percent totals in the actual dataset
+# they roughly match
+predict(m, type = "probs", newdata = data.frame(RACE_ETHNICITY = c("Asian", "Black", "Hispanic", "Other", "White")))
+
+race_counts <- df_imputed %>%
+  count(RACE_ETHNICITY)
+
+schl_counts <- df_imputed %>%
+  mutate %>%
+  group_by(RACE_ETHNICITY,SCHLHRS) %>%
+  count(SCHLHRS) 
+  
+
+merge(schl_counts, race_counts, by="RACE_ETHNICITY") %>%
+  mutate(pct_tot = n.x/n.y) %>%
+  dplyr::select(RACE_ETHNICITY, SCHLHRS, pct_tot)
+
+
+
+```
+
+let's try now making a model with INCOME by itself
+
+things very roughly match the percent of total 
+
+```{r echo=FALSE}
+# makign ordinal regression model with just income as predictor
+m <- polr(SCHLHRS ~ INCOME, data = df_imputed, Hess = TRUE)
+ctable <- coef(summary(m))
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+ctable <- cbind(ctable, "p value" = p)
+
+ctable
+
+# generating predictions and comparing them to percent total of data
+predict(m, type = "probs", newdata = data.frame(INCOME = c("1", "2", "3", "4", "5", "6", "7", "8")))
+
+inc_counts <- df_imputed %>%
+  count(INCOME)
+
+schl_counts <- df_imputed %>%
+  mutate %>%
+  group_by(INCOME,SCHLHRS) %>%
+  count(SCHLHRS) 
+  
+
+merge(schl_counts, inc_counts, by="INCOME") %>%
+  mutate(pct_tot = n.x/n.y) %>%
+  dplyr::select(INCOME, SCHLHRS, pct_tot)
+
+
+
+```
+
+
+If we pop too many variables into the regression, the p values for the coefficients might not be reliable because of multicollinearity. 
+
+
+Let's make a model now with RACE_ETHNICITY, INCOME, and INTRNTAVAIL - these are kind of correlated (see Richie's correlation matrix), but not as bad as other combinations/pairings
+
+the resulting ordinal model has most levels/dummy variables significant for every predictor except RACE_ETHNICITY
+
+
+```{r echo=FALSE}
+
+
+# building ordinal model with RACE_ETHNICITY, INCOME, and INTRNTAVAIL
+m1 <- polr(SCHLHRS ~ RACE_ETHNICITY+INCOME+INTRNTAVAIL, data = df_imputed)
+summary(m1)
+
+ctable <- coef(summary(m1))
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+ctable <- cbind(ctable, "p value" = p)
+
+ctable
+
+
+```
+
+
+not all categories of RACE_ETHNICITY are significant 
+
+let's see if adding that variable to INCOME and INTRNTAVAIL significantly improves the model (as opposed to leaving it out)
+use likelihood ratio test
+
+it ends up to significantly improve it, so let's leave it in
+
+final model is RACE_ETHNICITY + INCOME + INTRNTAVAIL --> predicted probabilities of SCHLHRS (for each level)
+
+```{r echo=FALSE}
+
+
+
+#making another model like m1 but without income
+m2 <- polr(SCHLHRS ~ INCOME+INTRNTAVAIL, data = df_imputed)
+summary(m2)
+
+ctable <- coef(summary(m2))
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+ctable <- cbind(ctable, "p value" = p)
+
+ctable
+
+
+#Likelihood ratio test
+# let's see if adding in RACE_ETHNICITY has a significant change in the observed model fit
+library(lmtest)
+lrtest(m1, m2)
+
+## yes it does indeed significantly improve the model 
+
+
+```
+
+getting predictions for the final model (RACE_ETHNICITY + INCOME + INTRNTAVAIL )
+
+predictions are predicted probabilities
+
+I made a csv with all 200 combinations of the predictors and their corresponding probabilities. 
+
+
+```{r echo=FALSE}
+
+#building an input dataset to generate predicted probabilities
+
+RACE_ETHNICITY <-c(rep("White",40), rep("Black",40), rep("Hispanic",40), rep("Asian",40), rep("Other",40))
+
+INCOME <-rep(c(rep("1",5), rep("2",5), rep("3",5), rep("4",5), rep("5",5), rep("6",5), rep("7",5), rep("8",5)), 5)
+
+
+INTRNTAVAIL <-c(rep(c("1", "2", "3","4","5"),40))
+
+
+input <- data.frame(RACE_ETHNICITY, INCOME, INTRNTAVAIL)
+
+
+# getting predicted probabilities
+
+predictions <- predict(m1, type = "probs", newdata = input)
+
+predictions_melted <- melt(predictions, value.name = "predicted_probability") %>%
+  rename(Index = Var1) %>%
+  rename(SCHLHRS = Var2)
+
+
+
+# combining info into one table
+
+input$Index <-  c(1:200)
+
+prediction_output <- merge(input, predictions_melted, by="Index")
+
+write.csv(prediction_output,"predictions_output.csv", row.names = FALSE)
+
+
+```
+
+
+Still need to validate the model...
+
+Actually, the resulting predicted probabilities --- not sure how to classify categories based off that because 
+the highest predicted probability would be for category 4 which is the most common. 
+
+You can use this website to get predicted probabilities for whole groups:
+https://towardsdatascience.com/implementing-and-interpreting-ordinal-logistic-regression-1ee699274cf5
+
+Can also check the model by looking at how well it reflects percent of total of the population
+
+you can just evaluate it relative to other models
+
+Why didn't we just do k-nearest neighbors
+
+
+```{r echo=FALSE}
+
+
+
+test <- predict(m1, type = "probs", newdata = df_imputed)
+
+
+
+
+
+```

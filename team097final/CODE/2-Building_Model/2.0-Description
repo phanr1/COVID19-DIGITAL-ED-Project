@@ -1,0 +1,13 @@
+This folder includes code related to building and evaluating the model. 
+
+2.1-Build_Ordinal_Regression_Model.Rmd: This is the R code for building the ordinal regression model, evaluating/selecting the final model, and generating predictions.
+To run this file, you need to download the imputed dataset from our github at: 
+https://github.gatech.edu/DVA-group97/our-lovely-repo/blob/master/Merging_and_Cleaning_Files/imputed_data.csv
+You can see the code for the creating the cleaned, imputed dataset in folder 1-Cleaning_Data
+
+2.1a-Build_Ordinal_Regression_Model.pdf: This is the knitted file of 2.1, so you can see what the output looks like even without downloading the full dataset. 
+
+predictions_output_final.csv: the predicted probabilities from the final model we created in 2.1 for all the combinations of predictor values.
+
+
+

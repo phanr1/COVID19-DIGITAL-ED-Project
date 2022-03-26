@@ -1,0 +1,396 @@
+---
+title: "Ordinal Regression Model"
+author: "Group 97"
+date: "11/15/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Goals: 
+
+1) build an ordinal regression model (first phase - progress report)
+2) improve and evaluate model (compare with other models)
+3) generate predicted probabilities for the visualization 
+
+
+```{r echo=FALSE}
+library(readr)
+library(data.table)
+library(tidyverse)
+library(DataExplorer)
+require(foreign)
+require(ggplot2)
+require(MASS)
+require(Hmisc)
+require(reshape2)
+library(car)
+library(lmtest)
+library(AER)
+```
+
+
+# Step 1: Build the Ordinal Regression Model (First Phase)
+
+## 1a: Loading the data
+
+If you are running this on your own machine, download the cleaned, imputed data set from our github repo at:
+https://github.gatech.edu/DVA-group97/our-lovely-repo/blob/master/Merging_and_Cleaning_Files/imputed_data.csv
+
+We cleaned the data previously. See folder 1-Cleaning_Data as part of this submission for the cleaning code. 
+
+In addition to loading the data, we re-type the categorical variables as factors as opposed to integers.  The survey responses were originally numeric codes in the raw data. 
+
+```{r echo=FALSE}
+#update the line below with the file location on your machine, assuming you downloaded it from the link above
+df_imputed <- fread("C:/Users/katri/our-lovely-repo/Merging_and_Cleaning_Files/imputed_data.csv")
+
+# changing factor variables (represented as int) to factors
+df_imputed <- df_imputed %>%
+  mutate(WEEK = as.factor(as.character(WEEK)) ) %>%
+  mutate(EEDUC = as.factor(as.character(EEDUC)) ) %>%
+  mutate(RHISPANIC = as.factor(as.character(RHISPANIC)) ) %>%
+  mutate(THHLD_NUMKID = as.factor(as.character(THHLD_NUMKID) )) %>%
+  mutate(THHLD_NUMPER = as.factor(as.character(THHLD_NUMPER) )) %>%
+  mutate(INCOME = as.factor(as.character(INCOME) )) %>%
+  mutate(CURFOODSUF = as.factor(as.character(CURFOODSUF)) ) %>%
+  mutate(EST_ST = as.factor(as.character(EST_ST) )) %>%
+  mutate(COMPAVAIL = as.factor(as.character(COMPAVAIL)) ) %>%
+  mutate(INTRNTAVAIL = as.factor(as.character(INTRNTAVAIL)) ) %>%
+  mutate(SCHLHRS = as.factor(as.character(SCHLHRS) )) %>%
+   mutate(RRACE = as.factor(as.character(RRACE) ))
+
+
+#overview of the variables in our cleaned dataset
+str(df_imputed)
+
+```
+
+
+## 1b: Building the Ordinal Regression Model - First Attempt 
+
+We use the polr function from the MASS library to run ordinal regressions with our data.  We use ordinal regression because out outcome variable SCHLHRS is a an ordinal variable representing how much live virtual contact students had with teachers. We chose this as out outcome variable because it had not yet been explored in peer-reviewed research.
+
+For the progress report and demo-ing our visualization for user feedback, we built a model with just RACE_ETHNICITY, INCOME, and INTRNTAVAIL (internet availability) to predict SCHLHRS.  We chose these predictors initially because these were previously identified as relevant to the digital divide according to our literature review.  We also wanted to limit the number of factors to three to keep our calculator visualization simpler for the user.  
+
+In the output table below, all of the predictors at every level were significant at the 5% significance level, except for one level of RACE_ETHNICITY. Each predictor has multiple levels in the model because they are categorical. In the next code cell, we check to see if keeping RACE_ETHNICITY still improves the model by performing a likelihood ratio test. 
+
+```{r echo=FALSE}
+# building ordinal model with RACE_ETHNICITY, INCOME, and INTRNTAVAIL to predict SCHLHRS
+m1 <- polr(SCHLHRS ~ RACE_ETHNICITY+INCOME+INTRNTAVAIL, data = df_imputed)
+#un-comment for summary table
+#summary(m1)
+
+ctable <- coef(summary(m1))
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+ctable <- cbind(ctable, "p value" = p)
+#outputs coefficents with p-values
+ctable
+
+```
+
+To see if it was worth keeping the RACE_ETHNICTY variable (since not all levels were significant), we performed a likelihood ratio test to see if adding it to the model significantly improved it beyond the effect of just having more variables in general. 
+
+The test came out significant (p-value = 3.538e-11), suggesting that keeping RACE_ETHNICITY in the model likely improves the model even if one level is not significant. 
+
+```{r echo=FALSE}
+#making another model like m1 but without income
+m2 <- polr(SCHLHRS ~ INCOME+INTRNTAVAIL, data = df_imputed)
+#summary(m2)
+
+ctable2 <- coef(summary(m2))
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+ctable <- cbind(ctable, "p value" = p)
+ctable2
+
+
+#Likelihood ratio test
+# let's see if adding in RACE_ETHNICITY has a significant change in the observed model fit
+lrtest(m1, m2)
+
+## yes it does indeed significantly improve the model (p-value = 3.538e-11)
+
+#let's remove m2 since we won't need it anymore
+rm(m2)
+
+```
+
+
+
+# Step 2: Improve and Evaluate the Model
+
+For the first phase of our project (see first part above), we built a model with just 3 predictors to ensure the design of our tool was simple for our users.  Like mentioned previously, we chose the 3 based off our literature survey.  The 3 predictors were: RACE_ETHNICITY, INCOME, INTRNTAVAIL. 
+
+According to our user survey, there was a slight preference for more variables.  The next preference was to keep the original 3 variables.  Based on this feedback, we decided to keep our original 3 predictors and test out adding one more variable to improve the model. We only considered up to 4 variables to keep the model and visualization simple for users, especially since a significant proportion of respondents preferred to keep only 3 predictors. 
+
+In the code cells following, we build 4 more models (each with one predictor added to the original 3) and compare them to the original model and among each other to evaluate them and select the best one. 
+
+We evaluate the models based on the following: 
+
+- Check assumptions log regression(see report)
+- Accuracy (limitations)
+- Likelihood ratio test
+- AIC
+
+
+## 2a: Creating Training, Validation, and Test Data Sets
+
+So we can evaluate the models we create and pick the most suitable one, let's divide the data into training, Validation, and test data sets.
+
+```{r echo=FALSE}
+# sampling values to pull from the dataset for testing vs training vs validation
+n_rows <- nrow(df_imputed)
+
+set.seed(2)
+
+pull <- sample(1:n_rows, size = round(n_rows * .7))
+train <- df_imputed[pull, ] # training set = 70%
+
+# remaining 30% of data to randomly split between validation and test sets
+leftovers <- df_imputed[-pull, ]
+
+set.seed(2)
+pull2 <- sample(1:nrow(leftovers), size = round(nrow(leftovers) / 2))
+
+validate <- leftovers[-pull2, ] # validation set = 15%
+test <- leftovers[pull2, ] # test set = 15%
+
+
+# checking that all things got assigned
+nrow(train) + nrow(test) + nrow(validate) == n_rows
+
+
+```
+
+## 2b: Building More Models with One More Predictor
+
+Below, we create more models with one more variable added to our original model with 3 variables (RACE_ETHNICITY, INCOME, INTRNTAVAIL)
+
+We considered adding one of the following variables: COMPAVAIL,THHLD_NUMKID, EEDUC, CURFOODSUF. These variables were included in the realm of possibility because they seemed relevant based on our lit search and they were also present in the same weeks as our outcome variable SCHLHRS.
+
+After we build all the models below, he have 5 models in total to compare:
+
+- m1: SCHLHRS ~ RACE_ETHNICITY+INCOME+INTRNTAVAIL (original)
+- m2: SCHLHRS ~ RACE_ETHNICITY+INCOME+INRNTAVAIL+COMPAVAIL
+- m3: SCHLHRS ~ RACE_ETHNICITY+INCOME+INRNTAVAIL+CURFOODSUF
+- m4: SCHLHRS ~ RACE_ETHNICITY+INCOME+INRNTAVAIL+EEDUC
+- m5: SCHLHRS ~ RACE_ETHNICITY+INCOME+INRNTAVAIL+THHLD_NUMKID
+
+In the cell below, we build the 5 models and print the summary tables for each. 
+
+```{r echo=FALSE}
+
+# we build the models with the training data
+
+# building ordinal model with RACE_ETHNICITY, INCOME, INTRNTAVAIL (original)
+m1 <- polr(SCHLHRS ~ RACE_ETHNICITY+INCOME+INTRNTAVAIL, data = train)
+summary(m1) # AIC: 456260.46 
+
+# building ordinal model with RACE_ETHNICITY, INCOME, INTRNTAVAIL + COMPAVAIL
+m2 <- polr(SCHLHRS ~ RACE_ETHNICITY+INCOME+INTRNTAVAIL+COMPAVAIL, data = train)
+summary(m2) # AIC: 455403.74 
+
+# building ordinal model with RACE_ETHNICITY, INCOME, INTRNTAVAIL + CURFOODSUF
+m3 <- polr(SCHLHRS ~ RACE_ETHNICITY+INCOME+INTRNTAVAIL+CURFOODSUF, data = train)
+summary(m3) # AIC: 455917.02
+
+# building ordinal model with RACE_ETHNICITY, INCOME, INTRNTAVAIL + EEDUC
+m4 <- polr(SCHLHRS ~ RACE_ETHNICITY+INCOME+INTRNTAVAIL+EEDUC, data = train)
+summary(m4) # AIC: 455775.19 
+
+# building ordinal model with RACE_ETHNICITY, INCOME, INTRNAVAIL + THHLD_NUMKID
+m5 <- polr(SCHLHRS ~ RACE_ETHNICITY+INCOME+INTRNTAVAIL+THHLD_NUMKID, data = train)
+summary(m5) # AIC: 455864.62 
+
+```
+
+## 2b: Comparing AIC Scores
+
+We pulled the AIC scores for each model above and print them in the table below.  We can use AIC to evaluate model fit. 
+
+Lower scores are better.  m2 (RACE_ETHNICITY, INCOME, INTRNTAVAIL, and COMPAVAIL) had the lowest AIC score of 455403.7. 
+
+```{r echo=FALSE}
+models <- c("m1", "m2", "m3", "m4", "m5")
+
+# AIC values for each model pulled from summary tables above
+aic <- c(456260.46, 455403.74, 455917.02, 455775.19, 455864.62 )
+
+data.frame(models, aic)
+```
+
+## 2c: Getting Accuracy From Predictions
+
+In the code cell below, we generate predictions and calculate accuracy based on the validation data set.  
+
+Model m3 appear to have the highest accuracy (0.6196786). However, all 5 models have a very similar level of accuracy, differing by less than .001
+
+```{r echo=FALSE}
+# below we generate predictions and get the accuracy for each model with the validation data set 
+pred1 <- predict(m1, validate)
+accuracy1 <- sum(validate$SCHLHRS == pred1)/length(pred1)
+
+pred2 <- predict(m2, validate)
+accuracy2 <- sum(validate$SCHLHRS == pred2)/length(pred2)
+
+pred3 <- predict(m3, validate)
+accuracy3 <- sum(validate$SCHLHRS == pred3)/length(pred3)
+
+pred4 <- predict(m4, validate)
+accuracy4 <- sum(validate$SCHLHRS == pred4)/length(pred4)
+
+pred5 <- predict(m5, validate)
+accuracy5 <- sum(validate$SCHLHRS == pred5)/length(pred5)
+
+# accuracy values
+accuracy <- c(accuracy1, accuracy2, accuracy3, accuracy4, accuracy5 )
+
+# outputting a table with accuracy - lowest = m3; all are similar though  
+data.frame(models, accuracy) 
+```
+
+It's possible that all of the models have a similar accuracy level because they mostly predict the value "4" for SCHLHRS, since this is the most common outcome for that variable across the full data set.  The models assign values based on the highest probability. "4" = 4 or more days of virtual contact.  
+
+62.3% of the full data set has the value of "4" for SCHLHRS.  This matches up with the models' accuracy levels of the models, which were all slightly below 62%. 
+
+In general, most of the models predicted "4" for most of the validation set.  So it makes sense if they predict about 62% correctly if they are labeling almost all of them as "4" as the data in general is ~62% the value "4". 
+
+See this article for limitations of using accuracy as a means of evaluating models: 
+https://medium.com/@limavallantin/why-you-should-not-trust-only-in-accuracy-to-measure-machine-learning-performance-a72cf00b4516
+
+```{r echo=FALSE}
+# for the full data, what percent have the value "4" for SCHLHRS
+sum(df_imputed$SCHLHRS == "4")/nrow(df_imputed)
+
+# showing how many of each outcome (1 to 4) each model predicted for the validation set
+# each of them mostly predict the value "4" for SCHLHRS
+summary(pred1)
+summary(pred2)
+summary(pred3)
+summary(pred4)
+summary(pred5)
+
+```
+
+## 2d: Likelihood Ratio Tests (Wilks Test)
+
+https://www.statology.org/likelihood-ratio-test-in-r/
+
+The likelihood ratio test compares the goodness of fit of two nested models.  Meaning, one "fuller" model with more variables vs one "nested" model that has the same variables but less of them.
+
+The null hypothesis is that both models are equally good, suggesting that you should use the model with less variables.
+The alternative hypothesis is that full model fits the data better, suggesting that you should use that one instead.
+
+For this test, we can only compare m2-5 (full models) with m1 (nested models). This is because model m1 has 3 variables nested relative to m2-5 which have the same 4 as m1 plus an additional.  
+
+In total, we perform 4 tests, comparing m2-m5 each with m1.  All 4 came out significant with p values of (2.2e-16), suggesting that adding a fourth variable (any of these 4) provides a better fit than just using the 3 from m1.   
+
+
+```{r echo=FALSE}
+#Likelihood ratio test
+lrtest( m1,m2)
+lrtest( m1,m3)
+lrtest( m1,m4)
+lrtest( m1,m5)
+
+```
+
+## 2e: Selecting and Testing the Final Model
+
+We decided to select model m2 (SSCHLHRS ~ RACE_ETHNICITY+INCOME+INRNTAVAIL+COMPAVAIL) because it had the lowest AIC value and had the highest accuracy (along with m3).  We also knew a model with 4 variables rather than 3 was preferable because of the likelihood ratio tests. 
+
+Looking at the summary table, all the variables are significant at every level except for RACE_ETHNICITY.  We looked into that variable earlier when we build the first model (m1), and it did improve the model as opposed to leaving out.
+
+```{r echo=FALSE}
+# summary table with p values for final model (m2)
+coeftest(m2)
+```
+
+To evaluate the final model, we used the test data to get accuracy, which was 62.1%.  
+
+Although this number may seem low, we previously explained the limitations of using accuracy above.  The accuracy like mentioned before, is more a reflection of the amount of respondents who selected #4, which is the most likely response. 
+
+```{r echo=FALSE}
+pred2_test <- predict(m2, test)
+sum(test$SCHLHRS == pred2_test)/length(pred2_test)
+```
+
+# Step 3: Generate Predicted Probabilities with Final Model 
+
+## 3a: Predicted probabilities for all value combos
+
+Since we chose m2 as our final model, we generated predicted probabilities for all the possible value combinations with the 4 predictors (1000 total = 5 categories for RACE_ETHNICITY * 8 categories for INCOME * 5 categories for INTRNTAVAIL * 5 categories for COMPAVAIL).  First we made an data frame with all the combinations as input to generate predictions.  Then, we made the predictions and cleaned the data to create a csv where each row is has a predicted probability for each of the combos for each level of SCHLHRS (4000 rows total = 1000 combos * 4 levels of SCHLHRS)
+
+```{r echo=FALSE}
+# building an input dataset to generate predicted probabilities
+# we want all the possible combinations of the 4 predictors
+RACE_ETHNICITY <-c(rep("White",200), rep("Black",200), rep("Hispanic",200), rep("Asian",200), rep("Other",200))
+INCOME <-rep(c(rep("1",25), rep("2",25), rep("3",25), rep("4",25), rep("5",25), rep("6",25), rep("7",25), rep("8",25)), 5)
+INTRNTAVAIL <- rep(c(rep("1",5), rep("2",5), rep("3",5), rep("4",5), rep("5",5)), 40)
+COMPAVAIL <-c(rep(c("1", "2", "3", "4", "5"),200))
+
+input <- data.frame(RACE_ETHNICITY, INCOME, INTRNTAVAIL, COMPAVAIL)
+
+# getting predicted probabilities
+predictions <- predict(m2, type = "probs", newdata = input)
+
+# uncomment the lines below for cleaning the data and saving off the csv
+predictions_melted <- melt(predictions, value.name = "predicted_probability") #%>%
+  #dplyr::rename(Index = X1) %>%
+  #dplyr::rename(predicted_probability = value) %>%
+  #dplyr::rename(SCHLHRS = X2)
+
+# combining info into one table
+#input$Index <-  c(1:1000)
+#prediction_output <- merge(input, predictions_melted, by="Index")
+
+# outputing the csv with the predictionsz
+#write.csv(prediction_output,"predictions_output_final.csv", row.names = FALSE)
+
+```
+
+## 3b:  Predicted values for comparison purposes
+
+Above, we generated predicted probabilities for the different combinations of the variable values.
+
+Below, we generate predicted values for comparison purposes.
+
+The difference here is that the input data we use for prediction is the full sample.  We need to do this separately with the full sample because the full sample is not evenly distributed across the 1000 combinations of predictor values (that we used above).
+
+With the predictions, we calculated the quantiles for each level of SCHLHRS (1 to 4) that we can use for the comparison for our tool. 
+
+```{r echo=FALSE}
+# getting predicted probabilities for the full data
+comp_predictions <- predict(m2, type = "probs", newdata = df_imputed)
+
+# getting the quantiles for each level of SCHLHRS
+one <- quantile(comp_predictions[,1])
+two <- quantile(comp_predictions[,2])
+three <- quantile(comp_predictions[,3])
+four <- quantile(comp_predictions[,4])
+
+comp_quantiles <- data.frame(one, two, three, four)
+
+# the quantiles are the row names, so we ensure they're captured in a varaible
+comp_quantiles <- cbind(quantile = rownames(comp_quantiles), comp_quantiles)
+
+# melting the data so that the levels of SCHLHRS are a variable not multiple column names
+# plus a little bit of cleanup  -- uncomment the lines below if needed
+comp_melted <- melt(comp_quantiles, value.name = "predicted_probability")# %>%
+#  dplyr::rename(SCHLHRS = variable) %>%
+#  dplyr::rename(predicted_probability = value) %>%
+#  dplyr::mutate(SCHLHRS = plyr::mapvalues(comp_melted$SCHLHRS, from=c("one", "two", "three", "four"), to=c("1", "2", "3", "4")))
+
+# reordeing columns
+#comp_melted <- comp_melted[,c(2,1,3)]
+
+# outputing the csv with the quantiles for all 4 levels of SCHLHRS for comparison purposes
+#write.csv(comp_melted,"comparison_final.csv", row.names = FALSE)
+
+```
+
+
+

@@ -1,0 +1,29 @@
+The files in this folder are related to merging all the files to produce one raw dataset and cleaning that dataset.
+
+1.1-merging_raw_data.py
+
+- This python script merges all of the weekly survey data downloaded from the U.S. Census Household Pulse Survey: 
+  https://www.census.gov/programs-surveys/household-pulse-survey/datasets.html
+- On our GitHub repo, you can find:
+  - The weekly files: https://github.gatech.edu/DVA-group97/our-lovely-repo/tree/master/Data/Responses
+  - The resulting 3 GB merged dataset: https://github.gatech.edu/DVA-group97/our-lovely-repo/blob/master/Merging_and_Cleaning_Files/everything_merged.csv
+ 
+1.2-cleaning_imputation.RMD
+
+- This RMD file cleans our data to prepare it for regression modeling and imputes missing values
+- It starts off with the merged dataset (created from the script above) 
+- You can find the final cleaned dataset with imputed values on our Github repo at: 
+  https://github.gatech.edu/DVA-group97/our-lovely-repo/blob/master/Merging_and_Cleaning_Files/imputed_data.csv
+- You can also find a data dictionary for this cleaned dataset here: 
+  https://github.gatech.edu/DVA-group97/our-lovely-repo/blob/9cc7de4bc87d067202e3bc3bbd203ea23be22f5c/Merging_and_Cleaning_Files/clean_data_dictionary.xlsx
+
+1.2a-cleaning_imputation.pdf
+
+- This is the knitted pdf of the R Markdown file above 
+- Even without downloading the full datasets above, you can see the output of the cleaning processes from this file
+
+1.3-Correlation_Matrix.ipynb
+
+- This is a jupyter notebook coded in python exploring the cleaned, imputed dataset to see how the different variables are correlated with one another
+- This is relevant because we want to avoid any multicollinearlity when we create our regression models
+- You can also view this file on colab: https://colab.research.google.com/drive/19jnvW7gFTmQ6A7OdnYKxIEPgUv4f9P_7?usp=sharing

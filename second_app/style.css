@@ -1,0 +1,18 @@
+.container {
+    height: 350px;
+    margin: 5px;
+    display: block;
+    position: relative;
+    text-align: center;
+ }
+
+  .child {
+    display: inline-block;;
+    position: absolute;
+    margin-left: auto;
+    margin-right: auto;
+    left: 0;
+    right: 0;
+    text-align: center;
+    bottom: 5px;
+  }

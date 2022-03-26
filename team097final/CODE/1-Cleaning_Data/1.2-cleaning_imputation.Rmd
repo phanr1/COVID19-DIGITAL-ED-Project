@@ -1,0 +1,234 @@
+---
+title: "Cleaning and Imputation"
+author: "Team 97"
+date: "10/29/2021"
+output:
+  pdf_document: default
+ 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Cleaning Data
+
+Goals:
+
+1) Clean data from everything_merged.csv to produce a smaller file with:
+- dates for the weeks
+- limited predictor and outcome variables that are available weeks 1-33
+    - exception: SCHLHRS - weeks 13-33
+
+2) Impute missing values with mice library
+
+
+
+```{r }
+library(readr)
+library(data.table)
+library(tidyverse)
+library(DataExplorer)
+library(mice)
+require(foreign)
+require(ggplot2)
+require(MASS)
+require(Hmisc)
+require(reshape2)
+library(car)
+```
+
+# Step 1: Data Cleaning
+
+## 1a: Loading the data
+
+If you're running this on your own machine, you'd need to download the data from our repo:
+
+- https://github.gatech.edu/DVA-group97/our-lovely-repo/blob/master/Merging_and_Cleaning_Files/everything_merged.csv
+- https://github.gatech.edu/DVA-group97/our-lovely-repo/blob/master/Merging_and_Cleaning_Files/dates.csv
+
+
+```{r }
+# Update the working directory below with the location of the downloaded files (linked above)
+setwd("C:/Users/katri/our-lovely-repo/Merging_and_Cleaning_Files")
+
+# Note: used fread instead of read.csv because this is a large file (3 GB)
+df <- fread("everything_merged.csv")
+dates <- fread("dates.csv")
+
+```
+
+## 1b: Preliminary Cleaning:
+
+- Select variables that are present weeks 1-33 (+ SCHLHRS which is weeks 13-33)
+  - Note: not all questions were asked every week or sometimes the format changed.  We selected variables to work with that were consistent during this time period. 
+- Add date variable based on the survey week.  Dates manually entered in dates.csv 
+  - We used the start date of the survey period as the "date".  Information pulled from the U.S. Census Household Pulse Survey website: https://www.census.gov/programs-surveys/household-pulse-survey/datasets.html
+  
+You can find a copy of the clean data up until this point at on our github at:
+https://github.gatech.edu/DVA-group97/our-lovely-repo/blob/master/Merging_and_Cleaning_Files/clean_data.csv
+
+
+```{r }
+
+# the predictors and digital divide outcomes below are present through weeks 1-33 or 13-33
+predictors <- c("EEDUC","RHISPANIC", "RRACE", "THHLD_NUMKID", "THHLD_NUMPER", "INCOME", "CURFOODSUF", "TSPNDFOOD", "TSPNDPRPD", "MORTCONF", "EST_ST")
+outcomes <- c("TEACH1", "TEACH2", "TEACH3", "TEACH4", "TEACH5", "COMPAVAIL", "INTRNTAVAIL", "SCHLHRS")
+
+# selecting the varaibles above for the cleaned dataset
+clean <- df %>% 
+  dplyr::select(WEEK, PWEIGHT, predictors, outcomes) %>%
+  filter(WEEK <= 33)
+
+# removing the raw data from the workspace to save memory (it's a big file)
+rm(df)
+
+# adding in the dates as a variable
+clean <- merge(dates, clean, by = "WEEK")  
+
+# For a csv output of the cleaning done until this point, uncomment and run the line below
+# write.csv(clean,"clean_data.csv", row.names = FALSE)
+```
+
+## 1c: Preparing Data for Regression Later: 
+
+- Filtering for data where we have a response to SCHLHRS (our chosen outcome variable)
+- Putting in NA values for cases with no response 
+- Changing survey responses to factor variables (from numeric) for the multiple choice questions
+  - the multiple choice survey responses have numeric codes 
+
+```{r }
+
+#saves clean data into df variable
+df <- clean %>%  filter(SCHLHRS > 0) # focusing on data only where we have responses for SCHLHRS (outcome of interest)
+
+df[df < 0] <- NA  # turns all negative values (skipped questions) into NA
+
+# changing factor variables (represented as int) to factors
+# for some reason I was having trouble automating this, so I did a lot by hand 
+df <- df %>%
+  mutate(WEEK = as.factor(as.character(WEEK)) ) %>%
+  mutate(EEDUC = as.factor(as.character(EEDUC)) ) %>%
+  mutate(RHISPANIC = as.factor(as.character(RHISPANIC)) ) %>%
+  mutate(THHLD_NUMKID = as.factor(as.character(THHLD_NUMKID) )) %>%
+  mutate(THHLD_NUMPER = as.factor(as.character(THHLD_NUMPER) )) %>%
+  mutate(INCOME = as.factor(as.character(INCOME) )) %>%
+  mutate(CURFOODSUF = as.factor(as.character(CURFOODSUF)) ) %>%
+  mutate(MORTCONF = as.factor(as.character(MORTCONF) ) )%>%
+  mutate(EST_ST = as.factor(as.character(EST_ST) )) %>%
+  mutate(TEACH1 = as.factor(as.character(TEACH1) )) %>%
+  mutate(TEACH2 = as.factor(as.character(TEACH2) )) %>%
+  mutate(TEACH3 = as.factor(as.character(TEACH3) )) %>%
+  mutate(TEACH4 = as.factor(as.character(TEACH4) )) %>%
+  mutate(TEACH5 = as.factor(as.character(TEACH5) )) %>%
+  mutate(COMPAVAIL = as.factor(as.character(COMPAVAIL)) ) %>%
+  mutate(INTRNTAVAIL = as.factor(as.character(INTRNTAVAIL)) ) %>%
+  mutate(SCHLHRS = as.factor(as.character(SCHLHRS) )) %>%
+   mutate(RRACE = as.factor(as.character(RRACE) ))
+  
+# prints out all the variables with their types
+str(df)
+
+```
+
+## 1d: Combining Race and Ethnicity (Hispanic) Data
+
+We made a variable for both race and ethnicity (Hispanic or not) combined, so we can consider this information together. 
+
+This was tough because there's overlap between identifying as Hispanic and all the races, so it's not a clear cut "bucket."  To explore this issue, we made a table (see below) exploring how many respondents of each race identified as Hispanic and what percentage of the total that was for each race.
+
+For reference 1 = White, 2 = Black, 3 = Asian, 4 = Other.
+
+```{r echo=FALSE}
+df %>% 
+  mutate(HISP = ifelse(RHISPANIC == 2, 1, 0)) %>%
+  mutate(ones = 1) %>%
+  group_by(RRACE) %>%
+  summarise(
+      hisp = sum(HISP),
+      total = sum(ones)
+  ) %>%
+  mutate(percent_total = hisp/total)
+
+```
+
+In the table above, it looks like people who identified as Hispanic mostly put White as their race.
+
+For simplicity's sake, we put anyone who identified as Hispanic in the Hispanic category of the new variable. For the new variable, that means for White, Black, Asian, or Other (RRACE codes 1-4 respectively) these would all be people who did not identify as Hispanic.
+
+```{r echo=FALSE}
+# Making RACE_ETHNICITY variable with all RRACE and RHISPANIC info combined
+# "Hispanic" in this variable refers to anyone who identfied as Hispanic
+# All other categories are non-Hispanic
+df <- df %>% 
+  mutate(RACE_ETHNICITY = ifelse(RHISPANIC ==2, "Hispanic", 
+                                 ifelse(RRACE == 1, "White",
+                                        ifelse(RRACE == 2, "Black",
+                                               ifelse(RRACE == 3, "Asian",
+                                                      ifelse(RRACE == 4, "Other", NA))))))
+
+```
+
+
+# Step 2: Imputing Missing Values
+
+## 2a: Exploring Missing Values  
+
+The following had more than 5% of the data missing:
+
+- TEACH 1-5
+- MORTCONF
+
+We removed these variables from our analysis because too much of the data was missing.
+
+```{r echo=FALSE}
+# creates a plot showing what values are missing
+plot_missing(df)
+
+# removing variables missing more than 5% 
+df <- subset(df, select=-c(MORTCONF,TEACH1, TEACH2, TEACH3, TEACH4, TEACH5))  
+
+```
+
+## 2b: Imputation with Mice Library
+
+Then, imputes missing values using Mice.  When we imputed the values, we assumed that missing data was "missing at random"
+
+Notes for mice: 
+
+- You have to specify a method for imputing each variable. "" skips the variable (no missing values)
+- See mice "method" selection info here: https://www.rdocumentation.org/packages/mice/versions/3.13.0/topics/mice
+- We used "polr" for ordinal variables and "norm.predict" (linear regression) for continuous variables
+- m=1, maxit = 1 does one iteration of imputation to save time -- This whole process takes a while because we still have a lot of data
+- Used quickpred to limit number of predictors used for imputation for each variable:
+https://www.rdocumentation.org/packages/mice/versions/3.13.0/topics/quickpred
+  - This means it only use variables with correlation of at least .4 to build the models for imputation
+
+
+```{r echo=FALSE}
+#imputing values using mice
+mice_imputes <- mice(df, pred = quickpred(df, mincor= 0.4, exc = "SCHLHRS"), method = c("", "", "", "", "", "", "", "","polr", "polr", "norm.predict", "norm.predict", "", "polr",  "polr", "", ""), maxit = 1, m = 1) 
+
+# saving off imputed data in df_imputed
+df_imputed <- complete(mice_imputes)
+
+# remove df file because it is very large and taking up memory
+rm(df)
+
+```
+
+The cell below checks to ensure our current dataset has nothing missing.
+
+You can find the cleaned dataset with the imputed values on our github at: 
+https://github.gatech.edu/DVA-group97/our-lovely-repo/blob/master/Merging_and_Cleaning_Files/imputed_data.csv
+
+```{r echo=FALSE}
+
+# checking - anything missing left? (creates plot)
+plot_missing(df_imputed)
+
+# uncomment the line below to save off the imputed values as a csv
+#write.csv(df_imputed,"imputed_data.csv", row.names = FALSE)
+
+```
+
