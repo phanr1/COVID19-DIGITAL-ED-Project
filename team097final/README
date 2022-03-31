@@ -1,21 +1,9 @@
 Group 097 Submission
 
-1. DESCRIPTION - Describe the package in a few paragraphs
+DESCRIPTION - Describe the package in a few paragraphs
 
 With our visualization, users can adjust key demographic features and see how they change the likelihood that a student received an adequate education during the pandemic. Lay users as well as experts will gain a deeper, intuitive understanding of the digital divide by experimenting with the dashboard.
 
 We used data from the Census Household Pulse Survey to build an ordinal logistic regression model to predict and visualize the number of days of live virtual contact students had with teachers during the 2020-2021 school year.   Our final model was built in R using the MASS library and included the predictors Race/Ethnicity, Income, Internet Availability, and Computer Availability.  
 
 The visualization was created using Streamlit in Python and uses the model output to demonstrate in an instantly coherent way how the selected independent variables correlate with the probability that segments of the population receive four days of virtual live instruction per week.
-
-2. INSTALLATION - How set up/view the visualization
-
-To view the visualization tool, no installation is necessary.  Instead, please view this link:
-
-http://104.42.230.177:8501/
-
-To review the code for data cleaning, building the model, and building the visualization, please see the CODE folder of this submission file. 
-
-3. EXECUTION - How to run a demo
-
-After opening the link from the Installation section above, select options from Student Traits section on the left for Race/Ethnicity, Income, Internet Availability, and Computer Availability.  Once you have selected the traits of students you are interested in, press the Submit button to see how likely it was that those students had 4 or more days of virtual contact during the 2020-2021 school year.  You can see the probability and also a description of the students represented on the right.
