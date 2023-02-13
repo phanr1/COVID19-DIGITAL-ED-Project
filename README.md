@@ -1,4 +1,5 @@
 # CSE-6242-Project
+The goal was to build a model off of data, visualize it, and then get feedback on whether people could understood our visualization. 
 
 Data folder contains all work done on data and compilation of data.
 
